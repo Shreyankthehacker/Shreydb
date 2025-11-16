@@ -2,7 +2,12 @@ from marshaller.valmarshal import TLVMarshaler, TLVUnmarshaller, Marshaler
 import io
 from configs import constants
 import struct
-from modals.columns import Column
+
+
+class Column:
+    name:str
+    datatype:int
+    allow_null:bool
 
 
 
@@ -29,7 +34,7 @@ class ColumnMarshaler(TLVMarshaler):
         buffer = io.BytesIO()
 
         # Outer header (Type + Length)
-        buffer.write(constants.TypeColumnDefinition)  # this is already in bytes si directly to the buffer 
+        buffer.write(constants.TypeCOLUMNDEF)  # this is already in bytes si directly to the buffer 
         buffer.write(struct.pack("<i", self.get_length()))  # length of the column type 
 
         # Field 1: column name
@@ -60,24 +65,33 @@ class ColumnUnmarshaler(TLVUnmarshaller):
     def __init__(self, data):
         super().__init__(data)
     
-    def unmarshal_column(self):
-        # Type + length for the outer column definition
-        datatype = self.unmarshal(self.read(constants.LenByte), int)
-        print("Data type is ", datatype)
-        col_length = self.unmarshal(self.read(constants.LenInt32), int)
 
-        # Field 1: name
-        nametype, namelength, namevalue = self.tlv_unmarshal(self.data)
+class ColumnUnmarshaler(TLVUnmarshaller):
+    column_name: str
+    column_datatype: int
+    column_allownull: bool
+
+    def __init__(self, data):
+        super().__init__(data)
+        self.column_name = ""
+        self.column_datatype = 0
+        self.column_allownull = False
+
+    def unmarshal_column(self):
+        outer_type = struct.unpack("<i", self.read(4))[0]
+        print("Outer type is ", outer_type)
+        col_length = struct.unpack("<i", self.read(4))[0]
+        print("Column length is ", col_length)
+
+        nametype, namelength, namevalue = self.tlv_unmarshal()
         self.column_name = namevalue
         print(f"Name field decoded at offset {self.offset}")
 
-        # Field 2: datatype
-        dtypename, dtypelength, dtypevalue = self.tlv_unmarshal(self.data)
+        dtypename, dtypelength, dtypevalue = self.tlv_unmarshal()
         self.column_datatype = dtypevalue
         print(f"Datatype field decoded at offset {self.offset}")
 
-        # Field 3: allow_null
-        allownulltype, allownulllength, allownullvalue = self.tlv_unmarshal(self.data)
+        allownulltype, allownulllength, allownullvalue = self.tlv_unmarshal()
         self.column_allownull = allownullvalue
         print(f"AllowNull field decoded at offset {self.offset}")
 
@@ -86,9 +100,10 @@ class ColumnUnmarshaler(TLVUnmarshaller):
         c.datatype = self.column_datatype
         c.allow_null = self.column_allownull
         return c
+
     
     def print_col(self):
-        print(f"the column name is {self.column_name} with the dtype {self.column_datatype} and has allownull {self.column_allownull}")
+        print(f"the column name is {self.column_name} with the dtype {constants.typemap[self.column_datatype]} and has allownull {self.column_allownull}")
 
 
 

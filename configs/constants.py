@@ -1,6 +1,5 @@
 
 ColumnNameLength = b'\x40'
-
 TypeINT32 = b'\x05'
 TypeSTRING = b'\x02'
 TypeBYTE = b'\x03'
@@ -20,4 +19,4 @@ typemap = {
 }
 
 Table_FileExtension = ".bin"
-BASEDir = './data'
+BaseDir = './data'
