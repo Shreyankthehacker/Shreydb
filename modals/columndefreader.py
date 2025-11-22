@@ -20,7 +20,7 @@ class ColumnDefReader:
         outer_type = struct.unpack("<i", outer_type_bytes)[0]   # ← unpack properly
 
         if outer_type != constants.ColumnType:
-            raise ValueError(f"Expected column definition ({constants.ColumnType}), got {outer_type}")
+            return 0
         
         # Read outer type (4 bytes)
         data[0:4] = self.reader.read(4)

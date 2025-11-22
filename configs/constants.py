@@ -27,4 +27,5 @@ BaseDir = './data'
 
 ColumnType = 99                                        # keep as int
 TypeCOLUMNDEF = struct.pack("<i", ColumnType)          # → b'c\x00\x00\x00'
-TypeRECORD    = struct.pack("<i", 100)                 # if you use 100 for records
+TypeRECORD    = 100                 # if you use 100 for records
+TypeDeletedRecord  = 101

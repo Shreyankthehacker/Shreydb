@@ -15,6 +15,9 @@ import modals.reader
 
 import traceback
 
+import modals.recordparser
+import struct
+from pathlib import Path
 
 
 class Table:
@@ -23,31 +26,38 @@ class Table:
     columnNames: Annotated[list[str],"has List of string where each of them is the column name "] # list of the column names
     columns: Annotated[dict[str, modals.columns.Column],"Map or dict which has column name as key and value is the column object itself "]  # map[column name] = modals.column object
     reader: modals.reader.Reader          #  modals.reader class
-    recordParser: Any
+    recordParser: modals.recordparser.RecordParser
     columnDefReader: modals.columndefreader.ColumnDefReader
     wal: Any
     _file_path:str 
 
-    def __init__(self, file_path= None , reader= None  , wal= None ,columns = None , columnNames= None,recordParser= None  ):
-        ''''Dont pass col def reader coz its done when we pass reader'''
+
+    def __init__(self, file_path=None, reader=None, wal=None, columns={}, columnNames=[], recordParser=None):
         self._file_path = file_path
-        self.file = open(file_path, "r+b")
-        self.name = self.getTableName()
-        self.columns = {}
-        self.reader = reader
-        self.columnDefReader = modals.columndefreader.ColumnDefReader(self.reader)
+        self.file = None  
+        self.reader = None
+        if file_path:
+            p = Path(file_path)
+            mode = "w+b" if not p.exists() else "r+b"
+            self.file = open(file_path, mode)
+        if reader:
+            self.reader = reader
+        elif self.file:
+            self.reader = modals.reader.Reader(self.file)
+        self.name = self.getTableName() if self.file else "unknown"
+        self.columns = columns
+        self.columnNames = columnNames
+        self.columnDefReader = modals.columndefreader.ColumnDefReader(self.reader) if self.reader else None
         self.wal = wal
-        self.columns = columns 
-        self.columnNames = columnNames # list of string 
-        self.recordParser = recordParser
+    
+    def setRecordParse(self,recordParser:modals.recordparser.RecordParser):
+        self.recordParser= recordParser
 
     
     def getTableName(self) -> str:
-        # Get filename attribute safely
+
         filename = getattr(self.file, "name", getattr(self.file, "filename", "unknown"))
-        # Split on both underscores and spaces
         parts = re.split(r'[_ ]+', filename)
-        # Take first chunk, remove extension
         base = parts[0].split('.')[0]
         return base.split("/")[-1]
     
@@ -62,9 +72,10 @@ class Table:
 
 
     def ReadColumnDefinitions(self):
+        self.file.seek(0,io.SEEK_SET)
         self.columnNames = []
         self.columns = {}
-        buffer = bytearray(1024 * 20)  # Larger for full col defs
+        buffer = bytearray(1024 * 20)  
         while True:
             
             try:
@@ -106,41 +117,105 @@ class Table:
         return None
     
 
-    def insert(self,record):
-        '''record be dictionary'''
-        self.file.seek(0,2) # move the file pointer to the end
+    # def insert(self,record):
+    #     '''record be dictionary'''
+    #     self.file.seek(0,2) # move the file pointer to the end
+    #     sizeOfRecord = 0
+    #     for col in self.columnNames:  # maybe make primary key and stuff
+    #         if record.get(col) is None:
+    #             raise ValueError(f"The record doesnt have value for the given column {col}")
+    #         val = record[col]
+    #         tlv = marshaller.valmarshal.TLVMarshaler(val)
+    #         tlv.tlv_marshal()
+    #         length = tlv.tlv_length()
+    #         sizeOfRecord+=length
+        
+    #     buffer = io.BytesIO()
+    #     buffer.write(struct.pack("<i", constants.TypeRECORD))
+
+    #     buffer.write(struct.pack("<i", sizeOfRecord))
+
+    #     for col in self.columnNames:
+    #         val = record[col]
+    #         tlv = marshaller.valmarshal.TLVMarshaler(val)
+    #         t = tlv.tlv_marshal()
+    #         buffer.write(t)
+
+    #     n = self.file.write(buffer.getvalue())
+
+    #     if n==len(buffer.getvalue()):
+    #         print("Record registered successfullly to the table")
+    #     else:
+    #         raise Exception("Couldnt write to the table")
+
+    def insert(self, record):
+        # ... existing validation ...
+        self.file.seek(0, 2)
         sizeOfRecord = 0
-        for col in self.columnNames:  # maybe make primary key and stuff
+        for col in self.columnNames:
             if record.get(col) is None:
                 raise ValueError(f"The record doesnt have value for the given column {col}")
             val = record[col]
             tlv = marshaller.valmarshal.TLVMarshaler(val)
             tlv.tlv_marshal()
             length = tlv.tlv_length()
-            sizeOfRecord+=length
-        
-        buffer = io.BytesIO()
-        typebuffer = tlv.marshal(constants.TypeRECORD)
-        buffer.write(typebuffer)
+            sizeOfRecord += length
 
-        size_buffer = tlv.marshal(sizeOfRecord)
-        buffer.write(size_buffer)
+        buffer = io.BytesIO()
+        buffer.write(struct.pack("<i", constants.TypeRECORD))  # 4-byte type
+        buffer.write(struct.pack("<i", sizeOfRecord))  # 4-byte length
 
         for col in self.columnNames:
-            val= record[col]
-            tlv_record = tlv.tlv_marshal(val)
-            buffer.write(tlv_record)
+            val = record[col]
+            tlv = marshaller.valmarshal.TLVMarshaler(val)  # New instance per col
+            t = tlv.tlv_marshal()
+            buffer.write(t)  # Full TLV bytes
 
         n = self.file.write(buffer.getvalue())
-
-        if n==len(buffer.getvalue()):
-            print("Record registered successfullly to the table")
+        if n == len(buffer.getvalue()):
+            print("Record registered successfully to the table")
         else:
             raise Exception("Couldnt write to the table")
+    # insertion is fucking fine hhahahahajqa
+
+    def seekuntil(self, target):
+        while True:
+            try:
+                dtype = self.reader.read_int()   # read 4-byte type
+                if dtype == target:
+                    # rewind exactly 4 bytes to land at the start of the record
+                    self.file.seek(-4, io.SEEK_CUR)
+                    return 1
+
+                length = self.reader.read_int()  # the length field
+                self.file.seek(length, io.SEEK_CUR)
+            except IOError:
+                return None
+
+    def ensureFilePointer(self):
+        self.file.seek(0,io.SEEK_SET)
+        return  self.seekuntil(constants.TypeRECORD)
+        
+
+
+    def select(self, wherestmt=None):
+        i = self.ensureFilePointer()
+        if i is None:
+            print("No records found")
+            return []
+        results = []
+        try:
+            while True:
+                self.recordParser.parse()
+                rawrecord = self.recordParser.value
+                results.append(rawrecord.record)  
+        except IOError as e:
+            print("End of the file reached returning the records")
+            return results
+# just wanna run a rough check first then will throw the wherestmt
 
 
 
-# from Writing Column Definitions is remaining 
 
 class DeletetableRecord :
     offset : int 

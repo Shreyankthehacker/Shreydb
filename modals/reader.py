@@ -33,17 +33,24 @@ class Reader:
         return int.from_bytes(self.read(4), "little")
 
 
-    def read_tlv(self):
-        buffer = io.BytesIO()
-        datatype = self.read_byte()
-        buffer.write(datatype)
+    # def read_tlv(self):
+    #     buffer = io.BytesIO()
+    #     datatype = self.read_byte()
+    #     buffer.write(datatype)
 
-        length = self.read_int()
-        buffer.write(length.to_bytes(constants.LenInt32))
+    #     length = self.read_int()
+    #     buffer.write(length.to_bytes(constants.LenInt32))
 
-        value = self.read(length)
-        buffer.write(value)
-        self.buffer_value =  buffer.getvalue()
-        return self.buffer_value
+    #     value = self.read(length)
+    #     buffer.write(value)
+    #     self.buffer_value =  buffer.getvalue()
+    #     return self.buffer_value
+    
+    def read_tlv(self) -> bytes:
+        type_b = self.read(1)
+        len_b = self.read(4)
+        length = int.from_bytes(len_b, 'little')
+        value_b = self.read(length)
+        return type_b + len_b + value_b
 
 
