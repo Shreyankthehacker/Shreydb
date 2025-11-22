@@ -173,7 +173,8 @@ class Table:
 
         n = self.file.write(buffer.getvalue())
         if n == len(buffer.getvalue()):
-            print("Record registered successfully to the table")
+            pass
+            #print("Record registered successfully to the table")
         else:
             raise Exception("Couldnt write to the table")
     # insertion is fucking fine hhahahahajqa
