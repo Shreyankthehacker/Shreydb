@@ -196,9 +196,57 @@ class Table:
         self.file.seek(0,io.SEEK_SET)
         return  self.seekuntil(constants.TypeRECORD)
         
+    def validateWhereStatement(self,wherestmt):
+        print(self.columnNames)
+        # actually my wherestatemnt accepts 
+        wherestmt['_union_type'] = wherestmt.get('_union_type','or')
+        for col,_ in wherestmt.items():
+            if col=='_union_type':
+                continue
+            if col not in self.columnNames:
+                print(col)
+                return -1
+        
+            
+            
+    
+    def _or_implementation_of_records(self,records , wherestmt):
+        return [rec for rec in records if any(rec[col] in lov for col,lov in wherestmt.items()) ]
+    
+    def _and_implementation_of_records(self,records,wherestmt):
+        return [rec for rec in records if all(rec[col] in lov for col, lov in wherestmt.items())]
+
+    def fileter_wherestatement(self,records , wherestmt):
+        results = []
+        select_type = wherestmt['_union_type']
+        del wherestmt['_union_type']
+        if  select_type== "and":
+
+            return self._and_implementation_of_records(records,wherestmt)
+        else:
+            return self._or_implementation_of_records(records,wherestmt)
+
+
 
 
     def select(self, wherestmt=None):
+        '''
+        wherestatement pattern be 
+        {
+        col1 : [possible values to be selected],
+        col2 : same 
+
+        _union_type : or/and
+
+        }
+        '''
+        if wherestmt is not None:
+            r = self.validateWhereStatement(wherestmt=wherestmt)
+            if r==-1:
+                print("Please check the format of the where statement")
+                return
+        
+        
         i = self.ensureFilePointer()
         if i is None:
             print("No records found")
@@ -211,7 +259,9 @@ class Table:
                 results.append(rawrecord.record)  
         except IOError as e:
             print("End of the file reached returning the records")
-            return results
+            if wherestmt is None:
+                return results
+            return self.fileter_wherestatement(results , wherestmt)
 # just wanna run a rough check first then will throw the wherestmt
 
 
